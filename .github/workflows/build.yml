@@ -1,0 +1,1145 @@
+name: Build TV Clock APK
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Generate project
+        run: |
+          mkdir -p app/src/main/java/com/example/tvclock
+          mkdir -p app/src/main/res/layout app/src/main/res/values app/src/main/res/drawable app/src/main/res/xml
+
+          cat > settings.gradle.kts <<'EOF'
+          pluginManagement {
+              repositories { google(); mavenCentral(); gradlePluginPortal() }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories { google(); mavenCentral() }
+          }
+          rootProject.name = "TVClockWeather"
+          include(":app")
+          EOF
+
+          cat > build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application") version "8.7.3" apply false
+              id("org.jetbrains.kotlin.android") version "2.0.21" apply false
+          }
+          EOF
+
+          cat > gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx2048m
+          EOF
+
+          cat > app/build.gradle.kts <<'EOF'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+          android {
+              namespace = "com.example.tvclock"
+              compileSdk = 35
+              defaultConfig {
+                  applicationId = "com.example.tvclock"
+                  minSdk = 23
+                  targetSdk = 35
+                  versionCode = 1
+                  versionName = "1.0"
+              }
+              buildTypes { release { isMinifyEnabled = false } }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions { jvmTarget = "17" }
+          }
+          dependencies {
+              implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+          }
+          EOF
+
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET" />
+              <uses-feature android:name="android.software.leanback" android:required="false" />
+              <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+              <application
+                  android:allowBackup="true"
+                  android:label="@string/app_name"
+                  android:icon="@drawable/ic_app"
+                  android:banner="@drawable/banner"
+                  android:theme="@style/Theme.Clock">
+                  <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+                  <activity android:name=".SettingsActivity" android:exported="true"
+                      android:theme="@style/Theme.Clock.Settings" />
+                  <service android:name=".ClockDreamService" android:exported="true"
+                      android:label="@string/app_name"
+                      android:permission="android.permission.BIND_DREAM_SERVICE">
+                      <intent-filter>
+                          <action android:name="android.service.dreams.DreamService" />
+                      </intent-filter>
+                      <meta-data android:name="android.service.dream" android:resource="@xml/dream" />
+                  </service>
+              </application>
+          </manifest>
+          EOF
+
+          cat > app/src/main/res/values/strings.xml <<'EOF'
+          <resources>
+              <string name="app_name">Часы и Погода</string>
+              <string name="hint">OK — сменить заставку  •  ←/→ — листать  •  Menu или ↑ — настройки</string>
+          </resources>
+          EOF
+
+          cat > app/src/main/res/values/themes.xml <<'EOF'
+          <resources>
+              <style name="Theme.Clock" parent="android:Theme.Material.NoActionBar">
+                  <item name="android:windowBackground">@android:color/black</item>
+                  <item name="android:colorAccent">#4DD0E1</item>
+              </style>
+              <style name="Theme.Clock.Settings" parent="android:Theme.Material.NoActionBar">
+                  <item name="android:windowBackground">#0F1420</item>
+                  <item name="android:colorAccent">#4DD0E1</item>
+              </style>
+          </resources>
+          EOF
+
+          cat > app/src/main/res/drawable/ic_app.xml <<'EOF'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+              android:width="108dp" android:height="108dp"
+              android:viewportWidth="108" android:viewportHeight="108">
+              <path android:fillColor="#1E2A5A"
+                  android:pathData="M54,54m-50,0a50,50 0 1,1 100,0a50,50 0 1,1 -100,0"/>
+              <path android:fillColor="#FFFFFF" android:pathData="M51.5,26h5v30h-5z"/>
+              <path android:fillColor="#FFFFFF" android:pathData="M54,51.5l22,10l-2,4.6l-22,-10z"/>
+              <path android:fillColor="#4DD0E1"
+                  android:pathData="M54,54m-5,0a5,5 0 1,1 10,0a5,5 0 1,1 -10,0"/>
+              <path android:fillColor="#FFD54F"
+                  android:pathData="M80,28m-8,0a8,8 0 1,1 16,0a8,8 0 1,1 -16,0"/>
+          </vector>
+          EOF
+
+          cat > app/src/main/res/drawable/banner.xml <<'EOF'
+          <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+              <item>
+                  <shape android:shape="rectangle">
+                      <gradient android:startColor="#1B2A5E" android:endColor="#4A1E6E" android:angle="0"/>
+                  </shape>
+              </item>
+              <item android:drawable="@drawable/ic_app"
+                  android:width="110dp" android:height="110dp" android:gravity="center"/>
+          </layer-list>
+          EOF
+
+          cat > app/src/main/res/xml/dream.xml <<'EOF'
+          <dream xmlns:android="http://schemas.android.com/apk/res/android"
+              android:settingsActivity="com.example.tvclock/com.example.tvclock.SettingsActivity" />
+          EOF
+
+          cat > app/src/main/res/layout/activity_main.xml <<'EOF'
+          <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:id="@+id/root"
+              android:layout_width="match_parent" android:layout_height="match_parent"
+              android:background="@android:color/black">
+              <com.example.tvclock.ScreensaverView
+                  android:id="@+id/scenes"
+                  android:layout_width="match_parent" android:layout_height="match_parent"/>
+              <LinearLayout android:id="@+id/content"
+                  android:layout_width="match_parent" android:layout_height="match_parent"
+                  android:orientation="vertical" android:gravity="center">
+                  <TextView android:id="@+id/time"
+                      android:layout_width="wrap_content" android:layout_height="wrap_content"
+                      android:textSize="150sp" android:fontFamily="sans-serif-thin"
+                      android:textColor="#FFFFFF" android:includeFontPadding="false"
+                      android:shadowColor="#90000000" android:shadowDy="4" android:shadowRadius="16"
+                      android:text="--:--"/>
+                  <TextView android:id="@+id/date"
+                      android:layout_width="wrap_content" android:layout_height="wrap_content"
+                      android:textSize="30sp" android:fontFamily="sans-serif-light"
+                      android:letterSpacing="0.1" android:textColor="#E6FFFFFF"
+                      android:shadowColor="#90000000" android:shadowDy="2" android:shadowRadius="8"/>
+                  <Space android:layout_width="0dp" android:layout_height="28dp"/>
+                  <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                      android:orientation="horizontal" android:gravity="center">
+                      <TextView android:id="@+id/weatherIcon"
+                          android:layout_width="wrap_content" android:layout_height="wrap_content"
+                          android:textSize="60sp"/>
+                      <TextView android:id="@+id/temp"
+                          android:layout_width="wrap_content" android:layout_height="wrap_content"
+                          android:layout_marginStart="20dp"
+                          android:textSize="76sp" android:fontFamily="sans-serif-thin"
+                          android:textColor="#FFFFFF" android:text="—"
+                          android:shadowColor="#90000000" android:shadowDy="3" android:shadowRadius="12"/>
+                      <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content"
+                          android:layout_gravity="center_vertical" android:layout_marginStart="24dp"
+                          android:orientation="vertical">
+                          <TextView android:id="@+id/desc"
+                              android:layout_width="wrap_content" android:layout_height="wrap_content"
+                              android:textSize="26sp" android:fontFamily="sans-serif-light"
+                              android:textColor="#F2FFFFFF" android:text="Загрузка погоды…"/>
+                          <TextView android:id="@+id/feels"
+                              android:layout_width="wrap_content" android:layout_height="wrap_content"
+                              android:layout_marginTop="4dp" android:textSize="20sp"
+                              android:textColor="#B3FFFFFF"/>
+                      </LinearLayout>
+                  </LinearLayout>
+                  <TextView android:id="@+id/details"
+                      android:layout_width="wrap_content" android:layout_height="wrap_content"
+                      android:layout_marginTop="14dp" android:textSize="22sp" android:textColor="#B3FFFFFF"/>
+                  <TextView android:id="@+id/city"
+                      android:layout_width="wrap_content" android:layout_height="wrap_content"
+                      android:layout_marginTop="26dp" android:textSize="18sp" android:textColor="#80FFFFFF"/>
+              </LinearLayout>
+              <TextView android:id="@+id/hint"
+                  android:layout_width="wrap_content" android:layout_height="wrap_content"
+                  android:layout_gravity="bottom|center_horizontal" android:layout_marginBottom="28dp"
+                  android:textSize="16sp" android:textColor="#99FFFFFF" android:alpha="0"
+                  android:text="@string/hint"/>
+          </FrameLayout>
+          EOF
+
+          cat > app/src/main/res/layout/activity_settings.xml <<'EOF'
+          <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent" android:layout_height="match_parent"
+              android:fillViewport="true">
+              <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                  android:orientation="vertical" android:padding="48dp">
+                  <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                      android:text="Настройки" android:textSize="32sp" android:textStyle="bold"
+                      android:textColor="#FFFFFF" android:layout_marginBottom="28dp"/>
+                  <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                      android:text="Город" android:textSize="18sp" android:textColor="#B0BEC5"/>
+                  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                      android:orientation="horizontal" android:layout_marginTop="8dp">
+                      <EditText android:id="@+id/cityQuery"
+                          android:layout_width="0dp" android:layout_weight="1"
+                          android:layout_height="wrap_content"
+                          android:hint="Введите название города" android:singleLine="true"
+                          android:imeOptions="actionSearch" android:textSize="20sp"
+                          android:textColor="#FFFFFF" android:textColorHint="#607080"/>
+                      <Button android:id="@+id/btnSearch"
+                          android:layout_width="wrap_content" android:layout_height="wrap_content"
+                          android:layout_marginStart="12dp" android:text="Найти"/>
+                  </LinearLayout>
+                  <ListView android:id="@+id/results"
+                      android:layout_width="match_parent" android:layout_height="240dp"
+                      android:layout_marginTop="8dp" android:background="#1A2233"
+                      android:visibility="gone"/>
+                  <TextView android:id="@+id/currentCity"
+                      android:layout_width="wrap_content" android:layout_height="wrap_content"
+                      android:layout_marginTop="10dp" android:textSize="16sp" android:textColor="#90A4AE"/>
+                  <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                      android:layout_marginTop="28dp" android:text="Заставка"
+                      android:textSize="18sp" android:textColor="#B0BEC5"/>
+                  <Spinner android:id="@+id/sceneSpinner"
+                      android:layout_width="420dp" android:layout_height="wrap_content"
+                      android:layout_marginTop="8dp"/>
+                  <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                      android:layout_marginTop="16dp" android:text="Интервал автосмены"
+                      android:textSize="16sp" android:textColor="#78909C"/>
+                  <Spinner android:id="@+id/intervalSpinner"
+                      android:layout_width="420dp" android:layout_height="wrap_content"
+                      android:layout_marginTop="8dp"/>
+                  <CheckBox android:id="@+id/format24"
+                      android:layout_width="wrap_content" android:layout_height="wrap_content"
+                      android:layout_marginTop="24dp" android:textSize="20sp"
+                      android:textColor="#FFFFFF" android:text="24-часовой формат времени"/>
+                  <Button android:id="@+id/done"
+                      android:layout_width="200dp" android:layout_height="wrap_content"
+                      android:layout_marginTop="32dp" android:text="Готово"/>
+              </LinearLayout>
+          </ScrollView>
+          EOF
+
+          cat > app/src/main/java/com/example/tvclock/Prefs.kt <<'EOF'
+          package com.example.tvclock
+
+          import android.content.Context
+
+          class Prefs(context: Context) {
+              private val sp = context.getSharedPreferences("tvclock", Context.MODE_PRIVATE)
+
+              var cityName: String
+                  get() = sp.getString("city", "Москва")!!
+                  set(v) { sp.edit().putString("city", v).apply() }
+              var lat: Double
+                  get() = sp.getFloat("lat", 55.7558f).toDouble()
+                  set(v) { sp.edit().putFloat("lat", v.toFloat()).apply() }
+              var lon: Double
+                  get() = sp.getFloat("lon", 37.6173f).toDouble()
+                  set(v) { sp.edit().putFloat("lon", v.toFloat()).apply() }
+              var use24h: Boolean
+                  get() = sp.getBoolean("24h", true)
+                  set(v) { sp.edit().putBoolean("24h", v).apply() }
+              var sceneMode: Int
+                  get() = sp.getInt("scene", -1)
+                  set(v) { sp.edit().putInt("scene", v).apply() }
+              var rotateSec: Int
+                  get() = sp.getInt("rotate", 60)
+                  set(v) { sp.edit().putInt("rotate", v).apply() }
+              var cachedWeather: String?
+                  get() = sp.getString("wcache", null)
+                  set(v) { sp.edit().putString("wcache", v).apply() }
+              var cachedAt: Long
+                  get() = sp.getLong("wtime", 0)
+                  set(v) { sp.edit().putLong("wtime", v).apply() }
+          }
+          EOF
+
+          cat > app/src/main/java/com/example/tvclock/WeatherRepository.kt <<'EOF'
+          package com.example.tvclock
+
+          import kotlinx.coroutines.Dispatchers
+          import kotlinx.coroutines.withContext
+          import org.json.JSONObject
+          import java.io.IOException
+          import java.net.HttpURLConnection
+          import java.net.URL
+          import java.net.URLEncoder
+
+          enum class WeatherKind { CLEAR, CLOUDY, RAIN, SNOW, FOG, STORM }
+
+          data class WeatherData(
+              val temp: Double, val feels: Double, val humidity: Int, val wind: Double,
+              val code: Int, val isDay: Boolean, val tMin: Double?, val tMax: Double?,
+              val fetchedAt: Long, val raw: String
+          ) {
+              val kind: WeatherKind get() = when (code) {
+                  0, 1 -> WeatherKind.CLEAR
+                  2, 3 -> WeatherKind.CLOUDY
+                  45, 48 -> WeatherKind.FOG
+                  in 51..67, in 80..82 -> WeatherKind.RAIN
+                  in 71..77, 85, 86 -> WeatherKind.SNOW
+                  95, 96, 99 -> WeatherKind.STORM
+                  else -> WeatherKind.CLOUDY
+              }
+              val description: String get() = when (code) {
+                  0 -> "Ясно"; 1 -> "Преимущественно ясно"; 2 -> "Переменная облачность"; 3 -> "Пасмурно"
+                  45, 48 -> "Туман"; 51, 53, 55 -> "Морось"; 56, 57 -> "Ледяная морось"
+                  61 -> "Небольшой дождь"; 63 -> "Дождь"; 65 -> "Сильный дождь"; 66, 67 -> "Ледяной дождь"
+                  71 -> "Небольшой снег"; 73 -> "Снег"; 75 -> "Сильный снег"; 77 -> "Снежная крупа"
+                  80, 81, 82 -> "Ливень"; 85, 86 -> "Снегопад"; 95 -> "Гроза"; 96, 99 -> "Гроза с градом"
+                  else -> "Облачно"
+              }
+              val icon: String get() = when (kind) {
+                  WeatherKind.CLEAR -> if (isDay) "☀️" else "🌙"
+                  WeatherKind.CLOUDY -> if (code == 2 && isDay) "⛅" else "☁️"
+                  WeatherKind.RAIN -> "🌧️"; WeatherKind.SNOW -> "❄️"
+                  WeatherKind.FOG -> "🌫️"; WeatherKind.STORM -> "⛈️"
+              }
+          }
+
+          object WeatherRepository {
+              data class Place(val name: String, val region: String, val country: String,
+                               val lat: Double, val lon: Double) {
+                  val display = listOf(name, region, country).filter { it.isNotBlank() }
+                      .distinct().joinToString(", ")
+              }
+
+              suspend fun search(query: String): List<Place> = withContext(Dispatchers.IO) {
+                  val q = URLEncoder.encode(query, "UTF-8")
+                  val json = JSONObject(get("https://geocoding-api.open-meteo.com/v1/search?name=$q&count=6&language=ru&format=json"))
+                  val arr = json.optJSONArray("results") ?: return@withContext emptyList()
+                  (0 until arr.length()).map {
+                      val o = arr.getJSONObject(it)
+                      Place(o.optString("name"), o.optString("admin1"), o.optString("country"),
+                          o.getDouble("latitude"), o.getDouble("longitude"))
+                  }
+              }
+
+              suspend fun current(lat: Double, lon: Double): WeatherData = withContext(Dispatchers.IO) {
+                  val url = "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon" +
+                      "&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m" +
+                      "&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=auto&wind_speed_unit=ms"
+                  parse(get(url))
+              }
+
+              fun parse(raw: String): WeatherData {
+                  val o = JSONObject(raw)
+                  val cur = o.getJSONObject("current")
+                  val daily = o.optJSONObject("daily")
+                  fun first(key: String): Double? = daily?.optJSONArray(key)
+                      ?.let { if (it.length() > 0 && !it.isNull(0)) it.getDouble(0) else null }
+                  return WeatherData(
+                      cur.getDouble("temperature_2m"), cur.getDouble("apparent_temperature"),
+                      cur.optInt("relative_humidity_2m", 0), cur.optDouble("wind_speed_10m", 0.0),
+                      cur.optInt("weather_code", 0), cur.optInt("is_day", 1) == 1,
+                      first("temperature_2m_min"), first("temperature_2m_max"),
+                      System.currentTimeMillis(), raw
+                  )
+              }
+
+              private fun get(url: String): String {
+                  val conn = URL(url).openConnection() as HttpURLConnection
+                  try {
+                      conn.connectTimeout = 10_000; conn.readTimeout = 10_000
+                      if (conn.responseCode != 200) throw IOException("HTTP ${conn.responseCode}")
+                      return conn.inputStream.bufferedReader().use { it.readText() }
+                  } finally { conn.disconnect() }
+              }
+          }
+          EOF
+
+          cat > app/src/main/java/com/example/tvclock/Scenes.kt <<'EOF'
+          package com.example.tvclock
+
+          import android.graphics.*
+          import java.util.Calendar
+          import kotlin.math.*
+          import kotlin.random.Random
+
+          interface Scene {
+              val title: String
+              fun resize(w: Int, h: Int)
+              fun draw(c: Canvas, t: Float, dt: Float, weather: WeatherData?)
+          }
+
+          object Scenes {
+              val titles = listOf("Северное сияние", "Космос", "Лава", "Океан", "Погода за окном", "Боке")
+              fun create(i: Int): Scene = when (i) {
+                  0 -> AuroraScene(); 1 -> SpaceScene(); 2 -> LavaScene()
+                  3 -> OceanScene(); 4 -> WeatherScene(); else -> BokehScene()
+              }
+          }
+
+          internal fun hsv(h: Float, s: Float, v: Float, a: Int = 255): Int =
+              (a shl 24) or (Color.HSVToColor(floatArrayOf(((h % 360f) + 360f) % 360f, s, v)) and 0xFFFFFF)
+
+          internal class StarField(seed: Int, private val count: Int) {
+              private val rnd = Random(seed)
+              private var pts = FloatArray(0)
+              private var width = 1f; private var height = 1f
+
+              fun resize(w: Float, h: Float) {
+                  width = w; height = h
+                  pts = FloatArray(count * 4)
+                  for (i in 0 until count) {
+                      pts[i*4] = rnd.nextFloat() * w; pts[i*4+1] = rnd.nextFloat() * h
+                      pts[i*4+2] = 0.6f + rnd.nextFloat() * 1.7f; pts[i*4+3] = rnd.nextFloat() * 6.283f
+                  }
+              }
+              fun draw(c: Canvas, t: Float, p: Paint, maxYFraction: Float = 1f, drift: Float = 0f) {
+                  for (i in 0 until count) {
+                      val o = i * 4
+                      if (pts[o+1] > height * maxYFraction) continue
+                      val a = (70 + 110 * (0.5f + 0.5f * sin(t * 1.3f + pts[o+3]))).toInt().coerceIn(0, 255)
+                      p.color = Color.argb(a, 255, 255, 255)
+                      var x = pts[o] - drift * t * (0.5f + pts[o+2] * 0.5f) * 8f
+                      x = ((x % width) + width) % width
+                      c.drawCircle(x, pts[o+1], pts[o+2], p)
+                  }
+              }
+          }
+
+          class AuroraScene : Scene {
+              override val title = Scenes.titles[0]
+              private var w = 1f; private var h = 1f
+              private val stars = StarField(7, 130)
+              private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+              private val path = Path()
+
+              override fun resize(w: Int, h: Int) {
+                  this.w = w.toFloat(); this.h = h.toFloat(); stars.resize(this.w, this.h)
+              }
+              override fun draw(c: Canvas, t: Float, dt: Float, weather: WeatherData?) {
+                  p.shader = LinearGradient(0f, 0f, 0f, h, 0xFF030014.toInt(), 0xFF0A1B3D.toInt(), Shader.TileMode.CLAMP)
+                  c.drawRect(0f, 0f, w, h, p); p.shader = null
+                  stars.draw(c, t, p, 0.75f)
+                  for (i in 0..2) {
+                      val hue = 130f + i * 40f + 25f * sin(t * 0.07f + i * 1.7f)
+                      val baseY = h * (0.26f + 0.08f * i)
+                      val amp = h * 0.055f
+                      val band = h * (0.30f + 0.05f * i)
+                      fun yAt(k: Int) = baseY +
+                          sin(k * 0.55f + t * (0.25f + 0.07f * i) + i * 2.1f) * amp +
+                          sin(k * 0.13f - t * 0.1f) * amp * 0.8f
+                      path.reset()
+                      val n = 30
+                      for (k in 0..n) { val x = w * k / n; if (k == 0) path.moveTo(x, yAt(k)) else path.lineTo(x, yAt(k)) }
+                      for (k in n downTo 0) path.lineTo(w * k / n, yAt(k) + band * (0.85f + 0.15f * sin(k * 0.4f + t * 0.3f)))
+                      path.close()
+                      p.shader = LinearGradient(0f, baseY - amp * 2, 0f, baseY + band,
+                          intArrayOf(hsv(hue, 0.8f, 1f, 0), hsv(hue, 0.65f, 1f, 120), hsv(hue + 40f, 0.8f, 0.9f, 0)),
+                          floatArrayOf(0f, 0.2f, 1f), Shader.TileMode.CLAMP)
+                      c.drawPath(path, p)
+                  }
+                  p.shader = null
+              }
+          }
+
+          class SpaceScene : Scene {
+              override val title = Scenes.titles[1]
+              private var w = 1f; private var h = 1f
+              private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+              private val stars = StarField(42, 240)
+              private val m = Matrix()
+              private var nebulae = emptyArray<RadialGradient>()
+              private var nebR = 1f
+
+              override fun resize(w: Int, h: Int) {
+                  this.w = w.toFloat(); this.h = h.toFloat(); stars.resize(this.w, this.h)
+                  nebR = min(this.w, this.h) * 0.55f
+                  nebulae = Array(3) {
+                      val hue = floatArrayOf(265f, 200f, 320f)[it]
+                      RadialGradient(0f, 0f, nebR,
+                          intArrayOf(hsv(hue, 0.7f, 0.9f, 60), hsv(hue, 0.7f, 0.6f, 0)), null, Shader.TileMode.CLAMP)
+                  }
+              }
+              override fun draw(c: Canvas, t: Float, dt: Float, weather: WeatherData?) {
+                  p.shader = LinearGradient(0f, 0f, 0f, h, 0xFF04060F.toInt(), 0xFF101433.toInt(), Shader.TileMode.CLAMP)
+                  c.drawRect(0f, 0f, w, h, p)
+                  for (i in 0..2) {
+                      val nx = w * (0.5f + 0.4f * sin(t * 0.03f + i * 2.4f))
+                      val ny = h * (0.45f + 0.35f * cos(t * 0.025f + i * 1.9f))
+                      m.setTranslate(nx, ny); nebulae[i].setLocalMatrix(m); p.shader = nebulae[i]
+                      c.drawCircle(nx, ny, nebR, p)
+                  }
+                  p.shader = null
+                  stars.draw(c, t, p, 1f, 1f)
+                  val k = floor(t / 8f).toInt(); val ph = (t - k * 8f) / 1.1f
+                  if (ph in 0.02f..1f) {
+                      val r = Random(k * 31 + 5)
+                      val sx = w * (0.15f + r.nextFloat() * 0.7f); val sy = h * (0.05f + r.nextFloat() * 0.3f)
+                      val dx = -w * 0.25f; val dy = h * 0.22f
+                      val hx = sx + dx * ph; val hy = sy + dy * ph
+                      val tp = max(0f, ph - 0.3f); val tx = sx + dx * tp; val ty = sy + dy * tp
+                      p.shader = LinearGradient(tx, ty, hx, hy,
+                          hsv(0f, 0f, 1f, 0), hsv(0f, 0f, 1f, (255 * (1f - ph)).toInt()), Shader.TileMode.CLAMP)
+                      p.style = Paint.Style.STROKE; p.strokeWidth = 3f
+                      c.drawLine(tx, ty, hx, hy, p)
+                      p.style = Paint.Style.FILL; p.shader = null
+                  }
+              }
+          }
+
+          class LavaScene : Scene {
+              override val title = Scenes.titles[2]
+              private var w = 1f; private var h = 1f
+              private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+              private val m = Matrix()
+              private val hues = floatArrayOf(320f, 20f, 265f, 190f, 45f, 285f)
+              private var params = FloatArray(0)
+              private var blobs = emptyArray<RadialGradient>()
+
+              override fun resize(w: Int, h: Int) {
+                  this.w = w.toFloat(); this.h = h.toFloat()
+                  val rnd = Random(9)
+                  params = FloatArray(6 * 5)
+                  for (i in 0 until 6) {
+                      val o = i * 5
+                      params[o] = 0.06f + rnd.nextFloat() * 0.10f; params[o+1] = 0.06f + rnd.nextFloat() * 0.10f
+                      params[o+2] = rnd.nextFloat() * 6.283f; params[o+3] = rnd.nextFloat() * 6.283f
+                      params[o+4] = min(this.w, this.h) * (0.28f + 0.18f * rnd.nextFloat())
+                  }
+                  blobs = Array(6) {
+                      val hue = hues[it]
+                      RadialGradient(0f, 0f, params[it*5+4],
+                          intArrayOf(hsv(hue, 0.75f, 1f, 170), hsv(hue, 0.85f, 0.85f, 70), hsv(hue, 0.85f, 0.7f, 0)),
+                          floatArrayOf(0f, 0.55f, 1f), Shader.TileMode.CLAMP)
+                  }
+              }
+              override fun draw(c: Canvas, t: Float, dt: Float, weather: WeatherData?) {
+                  c.drawColor(hsv(255f + 15f * sin(t * 0.04f), 0.55f, 0.10f))
+                  for (i in 0 until 6) {
+                      val o = i * 5
+                      val x = w * (0.5f + 0.42f * sin(t * params[o] + params[o+2]))
+                      val y = h * (0.5f + 0.42f * cos(t * params[o+1] + params[o+3]))
+                      m.setTranslate(x, y); blobs[i].setLocalMatrix(m); p.shader = blobs[i]
+                      p.alpha = (200 + 55 * sin(t * 0.25f + i * 1.3f)).toInt()
+                      c.drawCircle(x, y, params[o+4], p)
+                  }
+                  p.alpha = 255; p.shader = null
+              }
+          }
+
+          class OceanScene : Scene {
+              override val title = Scenes.titles[3]
+              private var w = 1f; private var h = 1f
+              private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+              private val path = Path()
+              private val stars = StarField(3, 90)
+              private val m = Matrix()
+              private var glowDay: RadialGradient? = null
+              private var glowNight: RadialGradient? = null
+              private var glowR = 1f
+
+              override fun resize(w: Int, h: Int) {
+                  this.w = w.toFloat(); this.h = h.toFloat(); stars.resize(this.w, this.h)
+                  glowR = this.h * 0.22f
+                  glowDay = RadialGradient(0f, 0f, glowR, 0x78FFD54F.toInt(), 0x00FFD54F, Shader.TileMode.CLAMP)
+                  glowNight = RadialGradient(0f, 0f, glowR, 0x50E9EDF7.toInt(), 0x00E9EDF7, Shader.TileMode.CLAMP)
+              }
+              override fun draw(c: Canvas, t: Float, dt: Float, weather: WeatherData?) {
+                  val day = weather?.isDay ?: true
+                  val top = if (day) hsv(215f + 10f * sin(t * 0.05f), 0.65f, 0.45f) else 0xFF0A102E.toInt()
+                  val bot = if (day) hsv(25f + 15f * sin(t * 0.04f), 0.55f, 0.85f) else 0xFF1C2A55.toInt()
+                  p.shader = LinearGradient(0f, 0f, 0f, h * 0.75f, top, bot, Shader.TileMode.CLAMP)
+                  c.drawRect(0f, 0f, w, h, p); p.shader = null
+                  if (!day) stars.draw(c, t, p, 0.55f)
+                  val cx = w * 0.74f; val cy = h * 0.28f; val r = h * 0.06f
+                  val glow = (if (day) glowDay else glowNight)!!
+                  m.setTranslate(cx, cy); glow.setLocalMatrix(m); p.shader = glow
+                  c.drawCircle(cx, cy, glowR, p); p.shader = null
+                  p.color = if (day) 0xFFFFE9A8.toInt() else 0xFFE9EDF7.toInt()
+                  c.drawCircle(cx, cy, r, p)
+                  if (!day) { p.color = top; c.drawCircle(cx + r * 0.4f, cy - r * 0.25f, r * 0.85f, p) }
+                  for (i in 0..3) {
+                      val baseY = h * (0.60f + 0.10f * i)
+                      path.reset(); path.moveTo(0f, h)
+                      val n = 36; val dir = if (i % 2 == 0) 1f else -1f
+                      for (k in 0..n) {
+                          val x = w * k / n
+                          val y = baseY + sin(k * 0.5f + t * (0.5f + 0.15f * i) * dir + i * 1.8f) * h * 0.018f * (i + 1)
+                          path.lineTo(x, y)
+                      }
+                      path.lineTo(w, h); path.close()
+                      p.color = hsv(210f, 0.75f, (if (day) 0.45f else 0.25f) - 0.05f * i, 230)
+                      c.drawPath(path, p)
+                  }
+              }
+          }
+
+          class WeatherScene : Scene {
+              override val title = Scenes.titles[4]
+              private var w = 1f; private var h = 1f
+              private val rnd = Random(11)
+              private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+              private val stars = StarField(5, 110)
+              private var rain = FloatArray(0)
+              private var snow = FloatArray(0)
+              private var clouds = FloatArray(0)
+              private var cloudShader: RadialGradient? = null
+              private val m = Matrix()
+              private val puffs = arrayOf(
+                  floatArrayOf(-0.95f, 0.18f, 0.7f), floatArrayOf(0f, 0f, 1f),
+                  floatArrayOf(0.95f, 0.2f, 0.75f), floatArrayOf(0.3f, -0.35f, 0.65f))
+
+              override fun resize(w: Int, h: Int) {
+                  this.w = w.toFloat(); this.h = h.toFloat(); stars.resize(this.w, this.h)
+                  rain = FloatArray(180 * 4)
+                  for (i in 0 until 180) { val o = i * 4
+                      rain[o] = rnd.nextFloat() * this.w; rain[o+1] = rnd.nextFloat() * this.h
+                      rain[o+2] = this.h * (0.02f + 0.02f * rnd.nextFloat())
+                      rain[o+3] = this.h * (0.9f + 0.6f * rnd.nextFloat()) }
+                  snow = FloatArray(130 * 5)
+                  for (i in 0 until 130) { val o = i * 5
+                      snow[o] = rnd.nextFloat() * this.w; snow[o+1] = rnd.nextFloat() * this.h
+                      snow[o+2] = this.h * (0.002f + 0.003f * rnd.nextFloat())
+                      snow[o+3] = rnd.nextFloat() * 6.283f
+                      snow[o+4] = this.h * (0.05f + 0.07f * rnd.nextFloat()) }
+                  clouds = FloatArray(6 * 4)
+                  for (i in 0 until 6) { val o = i * 4
+                      clouds[o] = rnd.nextFloat() * (this.w + 600f) - 300f
+                      clouds[o+1] = this.h * (0.06f + 0.30f * rnd.nextFloat())
+                      clouds[o+2] = this.h * (0.09f + 0.11f * rnd.nextFloat())
+                      clouds[o+3] = this.w * (0.008f + 0.014f * rnd.nextFloat()) }
+                  cloudShader = RadialGradient(0f, 0f, 1f, 0xC8FFFFFF.toInt(), 0x00FFFFFF, Shader.TileMode.CLAMP)
+              }
+
+              override fun draw(c: Canvas, t: Float, dt: Float, weather: WeatherData?) {
+                  val kind = weather?.kind ?: WeatherKind.CLEAR
+                  val day = weather?.isDay ?: (Calendar.getInstance().get(Calendar.HOUR_OF_DAY) in 7..18)
+                  val (top, bot) = palette(kind, day)
+                  p.shader = LinearGradient(0f, 0f, 0f, h, top, bot, Shader.TileMode.CLAMP)
+                  c.drawRect(0f, 0f, w, h, p); p.shader = null
+                  when (kind) {
+                      WeatherKind.CLEAR -> if (day) drawSun(c, t) else { stars.draw(c, t, p); drawMoon(c, top) }
+                      WeatherKind.CLOUDY -> { if (!day) stars.draw(c, t, p, 0.5f); drawClouds(c, dt, day) }
+                      WeatherKind.RAIN -> { drawClouds(c, dt, day); drawRain(c, dt, false) }
+                      WeatherKind.STORM -> {
+                          drawClouds(c, dt, day); drawRain(c, dt, true)
+                          val ft = t % 7f
+                          if (ft < 0.12f) c.drawARGB(((1f - ft / 0.12f) * 130).toInt(), 255, 255, 255)
+                      }
+                      WeatherKind.SNOW -> { drawClouds(c, dt, day); drawSnow(c, t, dt) }
+                      WeatherKind.FOG -> { drawClouds(c, dt, day); drawFog(c, t) }
+                  }
+              }
+
+              private fun drawSun(c: Canvas, t: Float) {
+                  val cx = w * 0.78f; val cy = h * 0.24f; val r = h * 0.07f
+                  p.style = Paint.Style.STROKE; p.strokeWidth = h * 0.006f; p.color = 0x8CFFE082.toInt()
+                  for (j in 0 until 12) {
+                      val a = j * PI.toFloat() / 6f + t * 0.15f
+                      val ca = cos(a); val sa = sin(a)
+                      c.drawLine(cx + ca * r * 1.35f, cy + sa * r * 1.35f, cx + ca * r * 1.75f, cy + sa * r * 1.75f, p)
+                  }
+                  p.style = Paint.Style.FILL; p.color = 0xFFFFD54F.toInt(); c.drawCircle(cx, cy, r, p)
+              }
+              private fun drawMoon(c: Canvas, bgTop: Int) {
+                  val cx = w * 0.78f; val cy = h * 0.22f; val r = h * 0.055f
+                  p.color = 0xFFE9EDF7.toInt(); c.drawCircle(cx, cy, r, p)
+                  p.color = bgTop; c.drawCircle(cx + r * 0.45f, cy - r * 0.3f, r * 0.9f, p)
+              }
+              private fun drawClouds(c: Canvas, dt: Float, day: Boolean) {
+                  val sh = cloudShader ?: return
+                  p.shader = sh; p.alpha = if (day) 210 else 100
+                  for (i in 0 until 6) { val o = i * 4
+                      clouds[o] += clouds[o+3] * dt
+                      if (clouds[o] - clouds[o+2] * 2 > w) clouds[o] = -clouds[o+2] * 2
+                      val x = clouds[o]; val y = clouds[o+1]; val s = clouds[o+2]
+                      for (pf in puffs) {
+                          val px = x + pf[0] * s; val py = y + pf[1] * s; val pr = s * pf[2]
+                          m.setScale(pr, pr); m.postTranslate(px, py); sh.setLocalMatrix(m)
+                          c.drawCircle(px, py, pr, p)
+                      }
+                  }
+                  p.alpha = 255; p.shader = null
+              }
+              private fun drawRain(c: Canvas, dt: Float, heavy: Boolean) {
+                  p.style = Paint.Style.STROKE; p.strokeWidth = h * 0.0022f; p.color = 0x99BBD4EE.toInt()
+                  val n = if (heavy) 180 else 110; val sp = if (heavy) 1.5f else 1f
+                  for (i in 0 until n) { val o = i * 4
+                      rain[o+1] += rain[o+3] * sp * dt; rain[o] += rain[o+3] * 0.18f * dt
+                      if (rain[o+1] > h) { rain[o+1] = -rain[o+2]; rain[o] = rnd.nextFloat() * w }
+                      if (rain[o] > w) rain[o] -= w
+                      val len = rain[o+2]
+                      c.drawLine(rain[o], rain[o+1], rain[o] + len * 0.18f, rain[o+1] + len, p)
+                  }
+                  p.style = Paint.Style.FILL
+              }
+              private fun drawSnow(c: Canvas, t: Float, dt: Float) {
+                  p.color = 0xE6FFFFFF.toInt()
+                  for (i in 0 until 130) { val o = i * 5
+                      snow[o+1] += snow[o+4] * dt
+                      snow[o] += sin(t * 0.8f + snow[o+3]) * w * 0.012f * dt
+                      if (snow[o+1] > h + 6f) { snow[o+1] = -6f; snow[o] = rnd.nextFloat() * w }
+                      if (snow[o] > w) snow[o] -= w
+                      if (snow[o] < 0) snow[o] += w
+                      c.drawCircle(snow[o], snow[o+1], snow[o+2], p)
+                  }
+              }
+              private fun drawFog(c: Canvas, t: Float) {
+                  for (i in 0 until 5) {
+                      val y = h * (0.15f + 0.17f * i)
+                      val shift = sin(t * 0.05f + i * 1.4f) * w * 0.25f
+                      p.shader = LinearGradient(shift, 0f, shift + w, 0f,
+                          intArrayOf(0x00FFFFFF, 0x4DFFFFFF, 0x00FFFFFF), null, Shader.TileMode.CLAMP)
+                      c.drawRect(0f, y, w, y + h * 0.11f, p)
+                  }
+                  p.shader = null
+              }
+              private fun palette(kind: WeatherKind, day: Boolean): Pair<Int, Int> = when (kind) {
+                  WeatherKind.CLEAR  -> if (day) 0xFF2E6FD8.toInt() to 0xFF9CC7F5.toInt() else 0xFF070B22.toInt() to 0xFF1B2447.toInt()
+                  WeatherKind.CLOUDY -> if (day) 0xFF5A7BA6.toInt() to 0xFFA8BDD6.toInt() else 0xFF141B2E.toInt() to 0xFF2A3550.toInt()
+                  WeatherKind.RAIN   -> if (day) 0xFF41586F.toInt() to 0xFF71859A.toInt() else 0xFF0D1420.toInt() to 0xFF232E40.toInt()
+                  WeatherKind.STORM  -> if (day) 0xFF33424F.toInt() to 0xFF5A6B7C.toInt() else 0xFF090E16.toInt() to 0xFF1B2430.toInt()
+                  WeatherKind.SNOW   -> if (day) 0xFF7C93B5.toInt() to 0xFFC9D6E8.toInt() else 0xFF1A2338.toInt() to 0xFF33415C.toInt()
+                  WeatherKind.FOG    -> if (day) 0xFF6E7B8A.toInt() to 0xFFAAB6C2.toInt() else 0xFF232B36.toInt() to 0xFF4A5560.toInt()
+              }
+          }
+
+          class BokehScene : Scene {
+              override val title = Scenes.titles[5]
+              private var w = 1f; private var h = 1f
+              private val rnd = Random(21)
+              private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+              private val m = Matrix()
+              private val hues = floatArrayOf(38f, 330f, 195f, 265f)
+              private var parts = FloatArray(0)
+              private var shaders = emptyArray<RadialGradient>()
+
+              override fun resize(w: Int, h: Int) {
+                  this.w = w.toFloat(); this.h = h.toFloat()
+                  parts = FloatArray(26 * 6)
+                  for (i in 0 until 26) { val o = i * 6
+                      parts[o] = rnd.nextFloat() * this.w; parts[o+1] = rnd.nextFloat() * this.h
+                      parts[o+2] = this.h * (0.03f + 0.10f * rnd.nextFloat())
+                      parts[o+3] = this.h * (0.015f + 0.03f * rnd.nextFloat())
+                      parts[o+4] = rnd.nextInt(4).toFloat(); parts[o+5] = rnd.nextFloat() * 6.283f }
+                  shaders = Array(4) {
+                      RadialGradient(0f, 0f, 1f,
+                          intArrayOf(hsv(hues[it], 0.5f, 1f, 130), hsv(hues[it], 0.6f, 1f, 0)), null, Shader.TileMode.CLAMP)
+                  }
+              }
+              override fun draw(c: Canvas, t: Float, dt: Float, weather: WeatherData?) {
+                  p.shader = LinearGradient(0f, 0f, 0f, h, 0xFF161028.toInt(), 0xFF2B1740.toInt(), Shader.TileMode.CLAMP)
+                  c.drawRect(0f, 0f, w, h, p)
+                  for (i in 0 until 26) { val o = i * 6
+                      parts[o+1] -= parts[o+3] * dt
+                      val r = parts[o+2]
+                      if (parts[o+1] < -r) { parts[o+1] = h + r; parts[o] = rnd.nextFloat() * w }
+                      val x = parts[o] + sin(t * 0.4f + parts[o+5]) * w * 0.012f
+                      val sh = shaders[parts[o+4].toInt()]
+                      m.setScale(r, r); m.postTranslate(x, parts[o+1]); sh.setLocalMatrix(m)
+                      p.shader = sh
+                      p.alpha = (150 + 80 * sin(t * 0.6f + parts[o+5])).toInt().coerceIn(60, 230)
+                      c.drawCircle(x, parts[o+1], r, p)
+                  }
+                  p.alpha = 255; p.shader = null
+              }
+          }
+          EOF
+
+          cat > app/src/main/java/com/example/tvclock/ScreensaverView.kt <<'EOF'
+          package com.example.tvclock
+
+          import android.content.Context
+          import android.graphics.Canvas
+          import android.graphics.Paint
+          import android.graphics.RadialGradient
+          import android.graphics.Shader
+          import android.os.SystemClock
+          import android.util.AttributeSet
+          import android.view.View
+          import kotlin.math.max
+
+          class ScreensaverView @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null) :
+              View(context, attrs) {
+
+              private val scenes = List(Scenes.titles.size) { Scenes.create(it) }
+              var weather: WeatherData? = null
+
+              private var autoRotate = true
+              private var rotateSec = 60
+              private var index = 4
+              private var running = false
+              private var startMs = 0L
+              private var lastMs = 0L
+              private var switchT = 0f
+              private var fadeT = -10f
+              private val overlay = Paint()
+              private var scrim: RadialGradient? = null
+              private val tick = Runnable { invalidate() }
+
+              fun configure(mode: Int, interval: Int) {
+                  autoRotate = mode < 0
+                  rotateSec = interval.coerceAtLeast(10)
+                  if (mode >= 0) { index = mode.coerceIn(0, scenes.size - 1); switchT = nowT(); fadeT = switchT }
+              }
+              fun start() { if (!running) { running = true; invalidate() } }
+              fun stop() { running = false; removeCallbacks(tick) }
+              fun next() = setScene((index + 1) % scenes.size)
+              fun prev() = setScene((index + scenes.size - 1) % scenes.size)
+
+              private fun setScene(i: Int) { index = i; switchT = nowT(); fadeT = switchT }
+              private fun nowT() = if (startMs == 0L) 0f else (SystemClock.uptimeMillis() - startMs) / 1000f
+
+              override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) {
+                  scenes.forEach { it.resize(w, h) }
+                  scrim = RadialGradient(w / 2f, h / 2f, max(w, h) * 0.75f,
+                      intArrayOf(0x5A000000, 0x00000000), floatArrayOf(0f, 0.7f), Shader.TileMode.CLAMP)
+              }
+
+              override fun onDraw(canvas: Canvas) {
+                  val now = SystemClock.uptimeMillis()
+                  if (startMs == 0L) { startMs = now; lastMs = now; fadeT = 0f; switchT = 0f }
+                  val t = (now - startMs) / 1000f
+                  val dt = ((now - lastMs) / 1000f).coerceIn(0.001f, 0.1f)
+                  lastMs = now
+                  scenes[index].draw(canvas, t, dt, weather)
+                  scrim?.let { overlay.shader = it; canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), overlay) }
+                  val fade = 1f - ((t - fadeT) / 0.8f).coerceIn(0f, 1f)
+                  if (fade > 0f) canvas.drawARGB((fade * 255).toInt(), 0, 0, 0)
+                  if (autoRotate && t - switchT >= rotateSec) setScene((index + 1) % scenes.size)
+                  if (running) postDelayed(tick, 33L)
+              }
+
+              override fun onDetachedFromWindow() { stop(); super.onDetachedFromWindow() }
+          }
+          EOF
+
+          cat > app/src/main/java/com/example/tvclock/ClockController.kt <<'EOF'
+          package com.example.tvclock
+
+          import android.animation.ValueAnimator
+          import android.view.View
+          import android.view.animation.LinearInterpolator
+          import android.widget.TextView
+          import kotlinx.coroutines.*
+          import java.text.SimpleDateFormat
+          import java.util.Date
+          import java.util.Locale
+          import kotlin.math.PI
+          import kotlin.math.cos
+          import kotlin.math.roundToInt
+          import kotlin.math.sin
+
+          class ClockController(root: View, private val scope: CoroutineScope, private val prefs: Prefs) {
+
+              private val scenes = root.findViewById<ScreensaverView>(R.id.scenes)
+              private val content = root.findViewById<View>(R.id.content)
+              private val timeText = root.findViewById<TextView>(R.id.time)
+              private val dateText = root.findViewById<TextView>(R.id.date)
+              private val iconText = root.findViewById<TextView>(R.id.weatherIcon)
+              private val tempText = root.findViewById<TextView>(R.id.temp)
+              private val descText = root.findViewById<TextView>(R.id.desc)
+              private val feelsText = root.findViewById<TextView>(R.id.feels)
+              private val detailsText = root.findViewById<TextView>(R.id.details)
+              private val cityText = root.findViewById<TextView>(R.id.city)
+              private val hint = root.findViewById<TextView>(R.id.hint)
+
+              private var job: Job? = null
+              private var drift: ValueAnimator? = null
+              private val ru = Locale("ru")
+
+              fun start() {
+                  stop()
+                  scenes.configure(prefs.sceneMode, prefs.rotateSec)
+                  scenes.start()
+                  pokeHint()
+                  tickClock()
+                  job = scope.launch {
+                      launch { while (true) { delay(1000); tickClock() } }
+                      launch { weatherLoop() }
+                  }
+                  drift = ValueAnimator.ofFloat(0f, (2 * PI).toFloat()).apply {
+                      duration = 240_000; repeatCount = ValueAnimator.INFINITE
+                      interpolator = LinearInterpolator()
+                      addUpdateListener {
+                          val v = it.animatedValue as Float
+                          content.translationX = sin(v) * 30f
+                          content.translationY = cos(v * 0.7f) * 20f
+                      }
+                      start()
+                  }
+              }
+
+              fun stop() { job?.cancel(); job = null; drift?.cancel(); drift = null; scenes.stop() }
+              fun nextScene() { scenes.next(); pokeHint() }
+              fun prevScene() { scenes.prev(); pokeHint() }
+              fun hideHint() { hint.visibility = View.GONE }
+              fun pokeHint() {
+                  hint.animate().cancel(); hint.alpha = 0.8f
+                  hint.animate().alpha(0f).setStartDelay(5000).setDuration(700).start()
+              }
+
+              private fun tickClock() {
+                  val now = Date()
+                  timeText.text = SimpleDateFormat(if (prefs.use24h) "HH:mm" else "h:mm a", ru).format(now)
+                  dateText.text = SimpleDateFormat("EEEE, d MMMM", ru).format(now)
+                      .replaceFirstChar { it.uppercase() }
+              }
+
+              private suspend fun weatherLoop() {
+                  prefs.cachedWeather?.let { raw ->
+                      try { show(WeatherRepository.parse(raw), prefs.cachedAt) } catch (_: Exception) {}
+                  }
+                  while (true) {
+                      try {
+                          val w = WeatherRepository.current(prefs.lat, prefs.lon)
+                          prefs.cachedWeather = w.raw; prefs.cachedAt = w.fetchedAt
+                          show(w, w.fetchedAt)
+                          delay(15 * 60_000L)
+                      } catch (e: CancellationException) { throw e
+                      } catch (e: Exception) { delay(60_000L) }
+                  }
+              }
+
+              private fun show(w: WeatherData, at: Long) {
+                  scenes.weather = w
+                  iconText.text = w.icon
+                  tempText.text = fmt(w.temp)
+                  descText.text = w.description
+                  feelsText.text = "ощущается как ${fmt(w.feels)}"
+                  var d = "влажность ${w.humidity}%   •   ветер ${w.wind.roundToInt()} м/с"
+                  if (w.tMin != null && w.tMax != null) d += "   •   ${fmt(w.tMin)} … ${fmt(w.tMax)}"
+                  detailsText.text = d
+                  cityText.text = "${prefs.cityName}   •   обновлено ${SimpleDateFormat("HH:mm", ru).format(Date(at))}"
+              }
+
+              private fun fmt(v: Double): String {
+                  val r = v.roundToInt()
+                  return (if (r > 0) "+" else "") + r + "°"
+              }
+          }
+          EOF
+
+          cat > app/src/main/java/com/example/tvclock/MainActivity.kt <<'EOF'
+          package com.example.tvclock
+
+          import android.app.Activity
+          import android.content.Intent
+          import android.os.Bundle
+          import android.view.KeyEvent
+          import android.view.View
+          import android.view.WindowManager
+          import kotlinx.coroutines.MainScope
+          import kotlinx.coroutines.cancel
+
+          class MainActivity : Activity() {
+              private val scope = MainScope()
+              private lateinit var controller: ClockController
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                  setContentView(R.layout.activity_main)
+                  controller = ClockController(findViewById(R.id.root), scope, Prefs(this))
+              }
+
+              override fun onResume() { super.onResume(); immersive(); controller.start() }
+              override fun onPause() { controller.stop(); super.onPause() }
+              override fun onDestroy() { scope.cancel(); super.onDestroy() }
+
+              private fun immersive() {
+                  @Suppress("DEPRECATION")
+                  window.decorView.systemUiVisibility =
+                      View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or View.SYSTEM_UI_FLAG_FULLSCREEN or
+                      View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                      View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+              }
+
+              override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean = when (keyCode) {
+                  KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER,
+                  KeyEvent.KEYCODE_DPAD_RIGHT -> { controller.nextScene(); true }
+                  KeyEvent.KEYCODE_DPAD_LEFT -> { controller.prevScene(); true }
+                  KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_SETTINGS -> {
+                      startActivity(Intent(this, SettingsActivity::class.java)); true
+                  }
+                  else -> super.onKeyDown(keyCode, event)
+              }
+          }
+          EOF
+
+          cat > app/src/main/java/com/example/tvclock/SettingsActivity.kt <<'EOF'
+          package com.example.tvclock
+
+          import android.app.Activity
+          import android.os.Bundle
+          import android.view.View
+          import android.widget.*
+          import kotlinx.coroutines.MainScope
+          import kotlinx.coroutines.cancel
+          import kotlinx.coroutines.launch
+
+          class SettingsActivity : Activity() {
+              private val scope = MainScope()
+              private lateinit var prefs: Prefs
+              private var places: List<WeatherRepository.Place> = emptyList()
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  setContentView(R.layout.activity_settings)
+                  prefs = Prefs(this)
+
+                  val query = findViewById<EditText>(R.id.cityQuery)
+                  val results = findViewById<ListView>(R.id.results)
+                  val current = findViewById<TextView>(R.id.currentCity)
+                  fun updateCurrent() { current.text = "Текущий город: ${prefs.cityName}" }
+                  updateCurrent()
+
+                  val search = {
+                      val q = query.text.toString().trim()
+                      if (q.isNotEmpty()) scope.launch {
+                          try {
+                              places = WeatherRepository.search(q)
+                              if (places.isEmpty()) { toast("Ничего не найдено"); results.visibility = View.GONE }
+                              else {
+                                  results.adapter = ArrayAdapter(this@SettingsActivity,
+                                      android.R.layout.simple_list_item_1, places.map { it.display })
+                                  results.visibility = View.VISIBLE
+                              }
+                          } catch (e: Exception) { toast("Ошибка сети: ${e.message}") }
+                      }
+                  }
+                  findViewById<Button>(R.id.btnSearch).setOnClickListener { search() }
+                  query.setOnEditorActionListener { _, _, _ -> search(); true }
+                  results.setOnItemClickListener { _, _, pos, _ ->
+                      val pl = places[pos]
+                      prefs.cityName = pl.name; prefs.lat = pl.lat; prefs.lon = pl.lon
+                      prefs.cachedWeather = null
+                      updateCurrent(); results.visibility = View.GONE; query.setText("")
+                      toast("Город сохранён: ${pl.display}")
+                  }
+
+                  val sceneSpinner = findViewById<Spinner>(R.id.sceneSpinner)
+                  sceneSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item,
+                      listOf("Авто-смена заставок") + Scenes.titles).also {
+                      it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+                  }
+                  sceneSpinner.setSelection(prefs.sceneMode + 1)
+                  sceneSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                      override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) { prefs.sceneMode = pos - 1 }
+                      override fun onNothingSelected(p: AdapterView<*>?) {}
+                  }
+
+                  val intervals = listOf(30, 60, 300)
+                  val intervalSpinner = findViewById<Spinner>(R.id.intervalSpinner)
+                  intervalSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item,
+                      listOf("Смена каждые 30 секунд", "Смена каждую минуту", "Смена каждые 5 минут")).also {
+                      it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+                  }
+                  intervalSpinner.setSelection(intervals.indexOf(prefs.rotateSec).coerceAtLeast(0))
+                  intervalSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                      override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) { prefs.rotateSec = intervals[pos] }
+                      override fun onNothingSelected(p: AdapterView<*>?) {}
+                  }
+
+                  val format = findViewById<CheckBox>(R.id.format24)
+                  format.isChecked = prefs.use24h
+                  format.setOnCheckedChangeListener { _, checked -> prefs.use24h = checked }
+
+                  findViewById<Button>(R.id.done).setOnClickListener { finish() }
+                  sceneSpinner.requestFocus()
+              }
+
+              private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_LONG).show()
+              override fun onDestroy() { scope.cancel(); super.onDestroy() }
+          }
+          EOF
+
+          cat > app/src/main/java/com/example/tvclock/ClockDreamService.kt <<'EOF'
+          package com.example.tvclock
+
+          import android.service.dreams.DreamService
+          import android.view.LayoutInflater
+          import kotlinx.coroutines.MainScope
+          import kotlinx.coroutines.cancel
+
+          class ClockDreamService : DreamService() {
+              private val scope = MainScope()
+              private var controller: ClockController? = null
+
+              override fun onAttachedToWindow() {
+                  super.onAttachedToWindow()
+                  setFullscreen(true)
+                  setInteractive(true)
+                  val root = LayoutInflater.from(this).inflate(R.layout.activity_main, null)
+                  setContentView(root)
+                  controller = ClockController(root, scope, Prefs(this)).apply { hideHint() }
+              }
+
+              override fun onDreamingStarted() { super.onDreamingStarted(); controller?.start() }
+              override fun onDreamingStopped() { controller?.stop(); super.onDreamingStopped() }
+              override fun onDetachedFromWindow() { scope.cancel(); controller = null; super.onDetachedFromWindow() }
+          }
+          EOF
+
+      - name: Build APK
+        run: gradle assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TVClockWeather-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
